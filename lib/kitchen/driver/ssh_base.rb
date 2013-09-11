@@ -16,6 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'socket'
+
 module Kitchen
 
   module Driver
@@ -99,10 +101,47 @@ module Kitchen
         [combined[:hostname], combined[:username], opts]
       end
 
+      def inject_real_hostname_into_proxy_configs
+        hostname = Socket.gethostbyname(Socket.gethostname).first
+
+        if config[:http_proxy]
+          config[:http_proxy] = config[:http_proxy].sub('HOST_MACHINE', hostname)
+        end
+        if config[:https_proxy]
+          config[:https_proxy] = config[:https_proxy].sub('HOST_MACHINE', hostname)
+        end
+      end
+
       def env_cmd(cmd)
+        if (config[:http_proxy] || config[:https_proxy])
+          # TODO: don't mutate, return copy?
+          inject_real_hostname_into_proxy_configs()
+
+          http_proxy_working = true
+          https_proxy_working = true
+          if config[:proxy_health_checking]
+            puts "proxy_health_checking enabled, testing..."
+            # TODO: make this use net:http. don't know if curl is present.
+            http_test_command = "bash -c 'http_proxy=#{config[:http_proxy]} curl http://www.google.com > /dev/null 2>&1'"
+            https_test_command = "bash -c 'https_proxy=#{config[:https_proxy]} curl https://www.google.com > /dev/null 2>&1'"
+            if system(http_test_command)
+              puts "http_proxy configured and working. enabling."
+            else
+              http_proxy_working = false
+              puts "http_proxy configured, but not reachable! disabling."
+            end
+            if system(https_test_command)
+              puts "https_proxy configured and working. enabling."
+            else
+              https_proxy_working = false
+              puts "https_proxy configured, but not reachable! disabling."
+            end
+          end
+        end
+
         env = "env"
-        env << " http_proxy=#{config[:http_proxy]}"   if config[:http_proxy]
-        env << " https_proxy=#{config[:https_proxy]}" if config[:https_proxy]
+        env << " http_proxy=#{config[:http_proxy]}"   if (config[:http_proxy] && http_proxy_working)
+        env << " https_proxy=#{config[:https_proxy]}" if (config[:https_proxy] && https_proxy_working)
 
         additional_paths = []
         additional_paths << config[:ruby_binpath] if config[:ruby_binpath]

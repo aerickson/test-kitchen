@@ -183,7 +183,7 @@ module Kitchen
               select { |fn| File.file?(fn) && fn != '.' && fn != '..' }
             cookbook_files.each { |file| FileUtils.rm(file) if ignores.ignored?(file) }
           end
-        end
+      end
       end
 
       def berksfile
