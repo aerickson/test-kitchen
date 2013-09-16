@@ -16,7 +16,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'socket'
+require "net/https"
+require "net/http"
+require "socket"
+require "uri"
+
+PROXY_TIMEOUT = 2
+
 
 module Kitchen
 
@@ -103,6 +109,8 @@ module Kitchen
 
       def inject_real_hostname_into_proxy_configs
         hostname = Socket.gethostbyname(Socket.gethostname).first
+        # dirty hack to make it work in office
+        hostname = '10.56.11.83'
 
         if config[:http_proxy]
           config[:http_proxy] = config[:http_proxy].sub('HOST_MACHINE', hostname)
@@ -112,36 +120,108 @@ module Kitchen
         end
       end
 
-      def env_cmd(cmd)
-        if (config[:http_proxy] || config[:https_proxy])
-          # TODO: don't mutate, return copy?
-          inject_real_hostname_into_proxy_configs()
+      def get_local_web_proxy_address
+        # polipo default...
+        port_to_use = 8123
+        port_to_use = config[:local_web_proxy_port] if config[:local_web_proxy_port]
 
-          http_proxy_working = true
-          https_proxy_working = true
-          if config[:proxy_health_checking]
-            puts "proxy_health_checking enabled, testing..."
-            # TODO: make this use net:http. don't know if curl is present.
-            http_test_command = "bash -c 'http_proxy=#{config[:http_proxy]} curl http://www.google.com > /dev/null 2>&1'"
-            https_test_command = "bash -c 'https_proxy=#{config[:https_proxy]} curl https://www.google.com > /dev/null 2>&1'"
-            if system(http_test_command)
-              puts "http_proxy configured and working. enabling."
-            else
-              http_proxy_working = false
-              puts "http_proxy configured, but not reachable! disabling."
-            end
-            if system(https_test_command)
-              puts "https_proxy configured and working. enabling."
-            else
-              https_proxy_working = false
-              puts "https_proxy configured, but not reachable! disabling."
-            end
+        # TODO: perhaps return a tuple (i.e. don't format as string)?
+        return "#{local_ip()}:#{port_to_use}"
+      end
+
+      # from http://coderrr.wordpress.com/2008/05/28/get-your-local-ip-address/
+      def local_ip
+        orig, Socket.do_not_reverse_lookup = Socket.do_not_reverse_lookup, true  # turn off reverse DNS resolution temporarily
+
+        UDPSocket.open do |s|
+          # ip is for Google
+          s.connect '64.233.187.99', 1
+          s.addr.last
+        end
+      ensure
+        Socket.do_not_reverse_lookup = orig
+      end
+
+      # tests http and https, assumes same server and port
+      def proxy_health_check(proxy_address)
+        http_uri = URI('http://www.google.com/')
+        https_uri = URI('https://www.google.com/')
+        # http = Net::HTTP.new(uri.path)
+        # https = Net::HTTP.new(uri.path)
+        # https.use_ssl = true
+        # https.verify_mode = OpenSSL::SSL::VERIFY_PEER
+
+        split_arr = proxy_address.split(':')
+        proxy_host = split_arr[0]
+        proxy_port = split_arr[1]
+        proxy = Net::HTTP::Proxy(proxy_host, proxy_port)
+
+        # http
+        http = proxy.start(http_uri.host)
+        http.read_timeout = PROXY_TIMEOUT
+        http_resp = http.get(http_uri.path)
+        # puts http_resp.code
+
+        # https
+        https = proxy.start(https_uri.host, :use_ssl => true, :verify_mode => OpenSSL::SSL::VERIFY_PEER)
+        https.read_timeout = PROXY_TIMEOUT
+        https_resp = https.get(https_uri.path)
+        # puts https_resp.code
+
+        if (http_resp.code == '200') && (https_resp.code == '200')
+          return true
+        end
+        return false
+      end
+
+      def env_cmd(cmd)
+        # if (config[:http_proxy] || config[:https_proxy])
+        #   # TODO: don't mutate, return copy?
+        #   inject_real_hostname_into_proxy_configs()
+
+        #   http_proxy_working = true
+        #   https_proxy_working = true
+        #   if config[:proxy_health_checking]
+        #     puts "proxy_health_checking enabled, testing..."
+        #     # TODO: make this use net:http. don't know if curl is present.
+        #     puts http_test_command = "bash -c 'http_proxy=#{config[:http_proxy]} curl http://www.google.com > /dev/null 2>&1'"
+        #     puts https_test_command = "bash -c 'https_proxy=#{config[:https_proxy]} curl https://www.google.com > /dev/null 2>&1'"
+        #     if system(http_test_command)
+        #       puts "http_proxy configured and working. enabling."
+        #     else
+        #       http_proxy_working = false
+        #       puts "http_proxy configured, but not reachable! disabling."
+        #     end
+        #     if system(https_test_command)
+        #       puts "https_proxy configured and working. enabling."
+        #     else
+        #       https_proxy_working = false
+        #       puts "https_proxy configured, but not reachable! disabling."
+        #     end
+        #   end
+        # end
+
+        # if local proxy server enabled
+          # if healthy
+            # set http_proxy and https_proxy
+
+        if config[:use_local_web_proxy]
+          puts "use_local_web_proxy: option is enabled."
+          proxy_address = get_local_web_proxy_address
+          result = proxy_health_check(proxy_address)
+
+          if result
+            puts "use_local_web_proxy: proxy is healthy. using it."
+            config[:http_proxy] = "http://#{proxy_address}"
+            config[:https_proxy] = "https://#{proxy_address}"
+          else
+            puts "use_local_web_proxy: proxy is not healthy. not using."
           end
         end
 
         env = "env"
-        env << " http_proxy=#{config[:http_proxy]}"   if (config[:http_proxy] && http_proxy_working)
-        env << " https_proxy=#{config[:https_proxy]}" if (config[:https_proxy] && https_proxy_working)
+        env << " http_proxy=#{config[:http_proxy]}"   if config[:http_proxy]
+        env << " https_proxy=#{config[:https_proxy]}" if config[:https_proxy]
 
         additional_paths = []
         additional_paths << config[:ruby_binpath] if config[:ruby_binpath]
