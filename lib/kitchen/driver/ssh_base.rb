@@ -107,22 +107,8 @@ module Kitchen
         [combined[:hostname], combined[:username], opts]
       end
 
-      def inject_real_hostname_into_proxy_configs
-        hostname = Socket.gethostbyname(Socket.gethostname).first
-        # dirty hack to make it work in office
-        hostname = '10.56.11.83'
-
-        if config[:http_proxy]
-          config[:http_proxy] = config[:http_proxy].sub('HOST_MACHINE', hostname)
-        end
-        if config[:https_proxy]
-          config[:https_proxy] = config[:https_proxy].sub('HOST_MACHINE', hostname)
-        end
-      end
-
       def get_local_web_proxy_address
-        # polipo default...
-        port_to_use = 8123
+        port_to_use = 8123 # polipo default... other options are squid default 3128
         port_to_use = config[:local_web_proxy_port] if config[:local_web_proxy_port]
 
         # TODO: perhaps return a tuple (i.e. don't format as string)?
@@ -157,16 +143,24 @@ module Kitchen
         proxy = Net::HTTP::Proxy(proxy_host, proxy_port)
 
         # http
-        http = proxy.start(http_uri.host)
-        http.read_timeout = PROXY_TIMEOUT
-        http_resp = http.get(http_uri.path)
-        # puts http_resp.code
+        begin
+          http = proxy.start(http_uri.host)
+          http.open_timeout = PROXY_TIMEOUT
+          http.read_timeout = PROXY_TIMEOUT
+          http_resp = http.get(http_uri.path)
+        rescue Errno::ECONNREFUSED => e
+          return false
+        end
 
         # https
-        https = proxy.start(https_uri.host, :use_ssl => true, :verify_mode => OpenSSL::SSL::VERIFY_PEER)
-        https.read_timeout = PROXY_TIMEOUT
-        https_resp = https.get(https_uri.path)
-        # puts https_resp.code
+        begin
+          https = proxy.start(https_uri.host, :use_ssl => true, :verify_mode => OpenSSL::SSL::VERIFY_PEER)
+          https.open_timeout = PROXY_TIMEOUT
+          https.read_timeout = PROXY_TIMEOUT
+          https_resp = https.get(https_uri.path)
+        rescue Errno::ECONNREFUSED => e
+          return false
+        end
 
         if (http_resp.code == '200') && (https_resp.code == '200')
           return true
@@ -175,43 +169,14 @@ module Kitchen
       end
 
       def env_cmd(cmd)
-        # if (config[:http_proxy] || config[:https_proxy])
-        #   # TODO: don't mutate, return copy?
-        #   inject_real_hostname_into_proxy_configs()
-
-        #   http_proxy_working = true
-        #   https_proxy_working = true
-        #   if config[:proxy_health_checking]
-        #     puts "proxy_health_checking enabled, testing..."
-        #     # TODO: make this use net:http. don't know if curl is present.
-        #     puts http_test_command = "bash -c 'http_proxy=#{config[:http_proxy]} curl http://www.google.com > /dev/null 2>&1'"
-        #     puts https_test_command = "bash -c 'https_proxy=#{config[:https_proxy]} curl https://www.google.com > /dev/null 2>&1'"
-        #     if system(http_test_command)
-        #       puts "http_proxy configured and working. enabling."
-        #     else
-        #       http_proxy_working = false
-        #       puts "http_proxy configured, but not reachable! disabling."
-        #     end
-        #     if system(https_test_command)
-        #       puts "https_proxy configured and working. enabling."
-        #     else
-        #       https_proxy_working = false
-        #       puts "https_proxy configured, but not reachable! disabling."
-        #     end
-        #   end
-        # end
-
-        # if local proxy server enabled
-          # if healthy
-            # set http_proxy and https_proxy
-
         if config[:use_local_web_proxy]
           puts "use_local_web_proxy: option is enabled."
-          proxy_address = get_local_web_proxy_address
+          proxy_address = get_local_web_proxy_address()
           result = proxy_health_check(proxy_address)
-
           if result
             puts "use_local_web_proxy: proxy is healthy. using it."
+            # TODO: hmm, bad to stomp on this config param?
+            # - not clear to users that can't use http/https_proxy and use_local_web_proxy?
             config[:http_proxy] = "http://#{proxy_address}"
             config[:https_proxy] = "https://#{proxy_address}"
           else
