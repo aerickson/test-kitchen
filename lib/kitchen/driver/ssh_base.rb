@@ -150,6 +150,8 @@ module Kitchen
           http_resp = http.get(http_uri.path)
         rescue Errno::ECONNREFUSED => e
           return false
+        rescue Timeout::Error
+          return false
         end
 
         # https
@@ -159,6 +161,8 @@ module Kitchen
           https.read_timeout = PROXY_TIMEOUT
           https_resp = https.get(https_uri.path)
         rescue Errno::ECONNREFUSED => e
+          return false
+        rescue Timeout::Error
           return false
         end
 
