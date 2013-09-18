@@ -115,8 +115,11 @@ module Kitchen
       end
 
       # from http://coderrr.wordpress.com/2008/05/28/get-your-local-ip-address/
+      # returns the host's non-private network IP address
       def local_ip
-        orig, Socket.do_not_reverse_lookup = Socket.do_not_reverse_lookup, true  # turn off reverse DNS resolution temporarily
+        # turn off reverse DNS resolution temporarily
+        orig = Socket.do_not_reverse_lookup
+        Socket.do_not_reverse_lookup = true
 
         UDPSocket.open do |s|
           # ip is for Google
@@ -124,6 +127,7 @@ module Kitchen
           s.addr.last
         end
       ensure
+        # restore previous setting
         Socket.do_not_reverse_lookup = orig
       end
 
@@ -137,7 +141,6 @@ module Kitchen
         proxy_port = split_arr[1]
         proxy = Net::HTTP::Proxy(proxy_host, proxy_port)
 
-        # http
         begin
           http = proxy.start(http_uri.host)
           http.open_timeout = PROXY_TIMEOUT
@@ -149,9 +152,11 @@ module Kitchen
           return false
         end
 
-        # https
         begin
-          https = proxy.start(https_uri.host, :use_ssl => true, :verify_mode => OpenSSL::SSL::VERIFY_PEER)
+          https = proxy.start(
+              https_uri.host,
+              :use_ssl => true,
+              :verify_mode => OpenSSL::SSL::VERIFY_PEER)
           https.open_timeout = PROXY_TIMEOUT
           https.read_timeout = PROXY_TIMEOUT
           https_resp = https.get(https_uri.path)
@@ -175,7 +180,7 @@ module Kitchen
           if result
             puts "use_local_web_proxy: proxy is healthy. using it."
             # TODO: hmm, bad to stomp on this config param?
-            # - not clear to users that can't use http/https_proxy and use_local_web_proxy?
+            # - not clear that use_local_web_proxy will mess with http/https_proxy?
             config[:http_proxy] = "http://#{proxy_address}"
             config[:https_proxy] = "https://#{proxy_address}"
           else
