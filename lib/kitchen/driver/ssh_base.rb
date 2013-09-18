@@ -23,7 +23,6 @@ require "uri"
 
 PROXY_TIMEOUT = 2
 
-
 module Kitchen
 
   module Driver
@@ -132,10 +131,6 @@ module Kitchen
       def proxy_health_check(proxy_address)
         http_uri = URI('http://www.google.com/')
         https_uri = URI('https://www.google.com/')
-        # http = Net::HTTP.new(uri.path)
-        # https = Net::HTTP.new(uri.path)
-        # https.use_ssl = true
-        # https.verify_mode = OpenSSL::SSL::VERIFY_PEER
 
         split_arr = proxy_address.split(':')
         proxy_host = split_arr[0]
