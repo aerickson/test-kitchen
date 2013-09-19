@@ -1,3 +1,13 @@
+# aerickson's Fork Notes
+
+### Changes Included:
+* new options :use_local_web_proxy and :local_web_proxy_port that drive :http_proxy and :https_proxy in a way that's convenient for locally-run caches.
+* install.sh is rewritten to use http (vs https) to allow caching.
+* 'kitchen test' will only run the first instance.
+
+
+---
+
 # Test Kitchen
 
 [![Build Status](https://secure.travis-ci.org/opscode/test-kitchen.png?branch=master)](https://travis-ci.org/opscode/test-kitchen)

@@ -294,6 +294,18 @@ module Kitchen
       arg == "all" ? get_all_instances : get_filtered_instances(arg)
     end
 
+    # running all tests when given 'kitchen test' is too much, use the first instance.
+    def parse_test_subcommand(arg = nil)
+      if arg == 'all'
+        get_all_instances
+      elsif arg.nil?
+        # no test specified, just run first
+        get_all_instances.first
+      else
+        get_filtered_instances(arg)
+      end
+    end
+
     def get_all_instances
       result = @config.instances
 
