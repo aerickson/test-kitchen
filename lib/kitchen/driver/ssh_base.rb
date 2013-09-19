@@ -143,9 +143,9 @@ module Kitchen
 
         begin
           http = proxy.start(
-              uri.host,
-              :use_ssl => use_ssl,
-              :verify_mode => verify_mode)
+            uri.host,
+            :use_ssl => use_ssl,
+            :verify_mode => verify_mode)
           http.open_timeout = PROXY_TIMEOUT
           http.read_timeout = PROXY_TIMEOUT
           http_resp = http.get(uri.path)
