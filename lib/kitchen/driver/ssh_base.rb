@@ -131,42 +131,50 @@ module Kitchen
         Socket.do_not_reverse_lookup = orig
       end
 
+      def web_proxy_health_check(proxy_host, proxy_port, uri)
+        proxy = Net::HTTP::Proxy(proxy_host, proxy_port)
+
+        use_ssl = false
+        verify_mode = nil
+        if uri.scheme == 'https'
+          use_ssl = true
+          verify_mode = OpenSSL::SSL::VERIFY_PEER
+        end
+
+        begin
+          http = proxy.start(
+              uri.host,
+              :use_ssl => use_ssl,
+              :verify_mode => verify_mode)
+          http.open_timeout = PROXY_TIMEOUT
+          http.read_timeout = PROXY_TIMEOUT
+          http_resp = http.get(uri.path)
+        rescue Errno::ECONNREFUSED => e
+          return false
+        rescue Timeout::Error
+          return false
+        end
+
+        if http_resp.code == '200'
+          return true
+        end
+        return false
+      end
+
       # tests http and https, assumes same server and port
-      def proxy_health_check(proxy_address)
+      def http_and_https_proxy_working?(proxy_address)
         http_uri = URI('http://www.google.com/')
         https_uri = URI('https://www.google.com/')
 
         split_arr = proxy_address.split(':')
         proxy_host = split_arr[0]
         proxy_port = split_arr[1]
-        proxy = Net::HTTP::Proxy(proxy_host, proxy_port)
 
-        begin
-          http = proxy.start(http_uri.host)
-          http.open_timeout = PROXY_TIMEOUT
-          http.read_timeout = PROXY_TIMEOUT
-          http_resp = http.get(http_uri.path)
-        rescue Errno::ECONNREFUSED => e
-          return false
-        rescue Timeout::Error
-          return false
-        end
+        puts "in http_and_https_proxy_working:"
+        puts http_success = web_proxy_health_check(proxy_host, proxy_port, http_uri)
+        puts https_success = web_proxy_health_check(proxy_host, proxy_port, https_uri)
 
-        begin
-          https = proxy.start(
-              https_uri.host,
-              :use_ssl => true,
-              :verify_mode => OpenSSL::SSL::VERIFY_PEER)
-          https.open_timeout = PROXY_TIMEOUT
-          https.read_timeout = PROXY_TIMEOUT
-          https_resp = https.get(https_uri.path)
-        rescue Errno::ECONNREFUSED => e
-          return false
-        rescue Timeout::Error
-          return false
-        end
-
-        if (http_resp.code == '200') && (https_resp.code == '200')
+        if http_success && https_success
           return true
         end
         return false
@@ -176,8 +184,7 @@ module Kitchen
         if config[:use_local_web_proxy]
           puts "use_local_web_proxy: option is enabled."
           proxy_address = get_local_web_proxy_address()
-          result = proxy_health_check(proxy_address)
-          if result
+          if http_and_https_proxy_working?(proxy_address)
             puts "use_local_web_proxy: proxy is healthy. using it."
             # TODO: hmm, bad to stomp on this config param?
             # - not clear that use_local_web_proxy will mess with http/https_proxy?
