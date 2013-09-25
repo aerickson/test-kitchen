@@ -170,9 +170,8 @@ module Kitchen
         proxy_host = split_arr[0]
         proxy_port = split_arr[1]
 
-        puts "in http_and_https_proxy_working:"
-        puts http_success = web_proxy_health_check(proxy_host, proxy_port, http_uri)
-        puts https_success = web_proxy_health_check(proxy_host, proxy_port, https_uri)
+        http_success = web_proxy_health_check(proxy_host, proxy_port, http_uri)
+        https_success = web_proxy_health_check(proxy_host, proxy_port, https_uri)
 
         if http_success && https_success
           return true
@@ -181,6 +180,7 @@ module Kitchen
       end
 
       def env_cmd(cmd)
+        # TODO: move this block outside of this call... shouldn't do puts in here
         if config[:use_local_web_proxy]
           puts "use_local_web_proxy: option is enabled."
           proxy_address = get_local_web_proxy_address()
