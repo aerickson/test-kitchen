@@ -2,7 +2,7 @@
 
 ### Changes Included:
 * new options :use_local_web_proxy and :local_web_proxy_port that drive :http_proxy and :https_proxy in a way that's convenient for locally-run caches.
-* install.sh is rewritten to use http (vs https) to allow caching.
+* ~~install.sh is rewritten to use http (vs https) to allow caching.~~ Now done by using driver config to override :chef_omnibus_url.
 * 'kitchen test' will only run the first instance.
 
 
